@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Simulation Replay</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <header>
+        <h1>🚀 Order Matching Engine - Simulation Replay</h1>
+        <div class="status-bar">
+            <span id="status-indicator" class="connecting"></span>
+            <span id="status-text">Connecting...</span>
+        </div>
+    </header>
+    
+    <main>
+        <div class="panel" id="last-price-panel">
+            <h2>Last Traded Price</h2>
+            <div id="last-price" class="price-neutral">---</div>
+            <div id="trade-count">Trades: 0 / 0</div>
+        </div>
+        
+        <div class="panel" id="chart-panel">
+            <h2>Price Chart (Live)</h2>
+            <div class="chart-wrapper">
+                <canvas id="priceChart"></canvas>
+            </div>
+        </div>
+
+        <div class="panel" id="feed-panel">
+            <h2>Live Trade Feed</h2>
+            <ul id="trade-feed-list">
+                </ul>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>

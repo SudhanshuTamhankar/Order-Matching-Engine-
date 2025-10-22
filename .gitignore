@@ -1,0 +1,29 @@
+﻿# Python venvs
+dashboard/.venv/
+venv/
+.env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# CMake / build artifacts
+build/
+bin/
+obj/
+CMakeFiles/
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+results/
+
+# IDEs / OS
+.vs/
+*.user
+*.suo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
