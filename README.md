@@ -223,25 +223,6 @@ python fastapi_server.py
 Open **`http://127.0.0.1:8000`** in your browser.
 
 ---
-
-## Resume Presentation Format
-
-```markdown
-### High-Throughput In-Memory Order Matching Engine | C++17, OpenMP, Multi-Threading
-[Live Interactive Engine & Architecture Lab](https://sudhanshutamhankar.github.io/Order-Matching-Engine-/) | [GitHub Repository](https://github.com/SudhanshuTamhankar/Order-Matching-Engine-)
-
-• Engineered an exchange-grade, in-memory continuous double-auction order matching engine in C++17 
-  supporting LIMIT, MARKET, IOC, and CANCEL operations at 100,000+ orders/sec.
-• Achieved O(1) order cancellation and deterministic price-time priority (FIFO) using a hybrid 
-  data structure combining sorted Red-Black Trees, doubly linked lists, and inverted hash indices.
-• Eliminated runtime memory fragmentation and OS allocator latency jitter via a contiguous 
-  pre-allocated Object Pool (PartitionedOrderPool) ensuring zero heap allocations on the hot matching path.
-• Implemented 64-bit fixed-point arithmetic ($10^4$ scale factor) to guarantee deterministic pricing 
-  and eliminate IEEE-754 binary floating-point precision loss.
-• Decoupled parallel OpenMP ingress validation from the single-threaded matching core using lock-free 
-  SPSC ring buffers with cache-line alignment (alignas 64) and asynchronous telemetry sampling.
-• Built a real-time interactive web visualizer featuring Level 2 Depth of Market (DOM), trade tape, 
-  and a step-by-step pipeline state machine for portfolio demonstration.
 ```
 
 ---
