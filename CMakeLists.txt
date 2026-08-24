@@ -40,6 +40,10 @@ target_link_libraries(
     OpenMP::OpenMP_CXX    # Link the OpenMP library
 )
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
+    target_link_libraries(matching_engine PRIVATE stdc++fs)
+endif()
+
 # --- Optional: Add Optimization ---
 # Add -O2 optimization flag for release builds
 # (CMake's default "Release" build type does this,

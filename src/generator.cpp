@@ -1,120 +1,144 @@
 #include "../include/generator.h"
-#include <iostream>
-#include <chrono>
 
-OrderGenerator::OrderGenerator(MatchingEngine& engine)
+#include <chrono>
+#include <cmath>
+#include <iostream>
+
+using namespace std;
+
+OrderGenerator::OrderGenerator(MatchingEngine& engine, PartitionedOrderPool& order_pool)
     : m_engine(engine),
-      m_start_order_id(1), // Start order IDs from 1
+      m_partitioned_pool(&order_pool),
+      m_order_pool(nullptr),
+      m_start_order_id(1),
       m_time_taken_ms(0.0),
+      m_rejected_orders(0),
       m_price_dist(MEAN_PRICE, PRICE_STD_DEV),
       m_qty_dist(MIN_QTY, MAX_QTY),
-      m_side_dist(0, 1), // 0 = BUY, 1 = SELL
-      m_type_dist(0, 100) // Percentage-based for order type
-{
-    // Note: std::random_device is (ideally) a non-deterministic
-    // random source used to seed the pseudo-random generator.
+      m_side_dist(0, 1),
+      m_type_dist(0, 99),
+      m_request_dist(0, 99),
+      m_account_dist(1001, 1050) {
+}
+
+OrderGenerator::OrderGenerator(MatchingEngine& engine, OrderPool& order_pool)
+    : m_engine(engine),
+      m_partitioned_pool(nullptr),
+      m_order_pool(&order_pool),
+      m_start_order_id(1),
+      m_time_taken_ms(0.0),
+      m_rejected_orders(0),
+      m_price_dist(MEAN_PRICE, PRICE_STD_DEV),
+      m_qty_dist(MIN_QTY, MAX_QTY),
+      m_side_dist(0, 1),
+      m_type_dist(0, 99),
+      m_request_dist(0, 99),
+      m_account_dist(1001, 1050) {
 }
 
 uint64_t OrderGenerator::get_timestamp_ns() const {
-    // Get current time as nanoseconds since epoch
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::high_resolution_clock::now().time_since_epoch()
+    return chrono::duration_cast<chrono::nanoseconds>(
+        chrono::high_resolution_clock::now().time_since_epoch()
     ).count();
 }
 
-Order OrderGenerator::create_random_order(uint64_t id, std::mt19937& rng) {
-    // Generate random properties
-    OrderSide side = (m_side_dist(rng) == 0) ? OrderSide::BUY : OrderSide::SELL;
-    
-    // Generate a price with 2 decimal places
-    double price = std::round(m_price_dist(rng) * 100.0) / 100.0;
-    
-    uint64_t quantity = m_qty_dist(rng);
+void OrderGenerator::populate_random_order(Order* order, uint64_t id, mt19937_64& rng) {
     uint64_t timestamp = get_timestamp_ns();
+    uint32_t asset_id = 1; // Primary test asset (e.g. AAPL)
+    uint32_t account_id = m_account_dist(rng);
+    int request_roll = m_request_dist(rng);
 
-    // Determine order type (e.g., 80% LIMIT, 15% MARKET, 5% IOC)
-    OrderType type;
+    if (id > 1 && request_roll < 12) {
+        uniform_int_distribution<uint64_t> cancel_target_dist(1, id - 1);
+        order->reset_cancel(id, cancel_target_dist(rng), timestamp, asset_id, account_id);
+        return;
+    }
+
+    OrderSide side = (m_side_dist(rng) == 0) ? OrderSide::BUY : OrderSide::SELL;
+    uint64_t quantity = m_qty_dist(rng);
+    Price price = price_from_double(round(m_price_dist(rng) * 100.0) / 100.0);
+
+    OrderType type = OrderType::LIMIT;
     int type_roll = m_type_dist(rng);
-    
-    if (type_roll < 80) {
-        type = OrderType::LIMIT;
-    } else if (type_roll < 95) {
+    if (type_roll >= 80 && type_roll < 95) {
         type = OrderType::MARKET;
-        // Market orders don't have a meaningful price, but for
-        // our matching logic, a "worst-case" price helps.
-        // Or we can just set to 0. Our engine handles 0.
-        price = 0.0; 
-    } else {
+        price = 0;
+    } else if (type_roll >= 95) {
         type = OrderType::IOC;
     }
 
-    return Order(id, side, type, price, quantity, timestamp);
+    order->reset_new(id, side, type, price, quantity, timestamp, asset_id, account_id, id);
+}
+
+bool OrderGenerator::validate_order(const Order& order) const {
+    if (order.is_cancel_request()) {
+        return order.get_cancel_target_id() != 0;
+    }
+
+    if (order.get_quantity() == 0) {
+        return false;
+    }
+
+    if (order.get_type() != OrderType::MARKET && order.get_price() <= 0) {
+        return false;
+    }
+
+    return true;
 }
 
 void OrderGenerator::generate_orders(uint64_t num_orders) {
-    std::cout << "Starting parallel generation of " << num_orders << " orders..." << std::endl;
+    cout << "Starting parallel validation and ingestion of " << num_orders << " orders..." << endl;
 
-    // Use random_device to get a non-deterministic seed
-    std::random_device rd;
-
-    // Start wall-clock timer
     double start_time = omp_get_wtime();
+    uint64_t rejected_orders = 0;
 
-    // --- OpenMP Parallel Region ---
-    // This block will be executed by multiple threads.
-    // We create a new RNG for each thread.
-    #pragma omp parallel
+    #pragma omp parallel reduction(+:rejected_orders)
     {
-        // --- Thread-Local Variables ---
-        // Each thread gets its own *independent* random number generator
-        // Seeded with a combination of random_device and the thread's unique ID
-        unsigned int seed = rd() + omp_get_thread_num();
-        std::mt19937 thread_rng(seed);
+        const int tid = omp_get_thread_num();
+        uint64_t seed = static_cast<uint64_t>(chrono::high_resolution_clock::now().time_since_epoch().count())
+            ^ (0x9e3779b97f4a7c15ULL + static_cast<uint64_t>(tid));
+        mt19937_64 thread_rng(seed);
 
-        // --- Parallel Loop ---
-        // The 'for' loop iterations are divided among the threads
-        // The 'schedule(static)' clause gives each thread a large, contiguous
-        // chunk of work, which is efficient.
         #pragma omp for schedule(static)
-        for (uint64_t i = 0; i < num_orders; ++i) {
-            // Atomically fetch and increment the global order ID counter
-            // to ensure every order ID is unique.
-            // Note: This is a C++11 standard, but not all OpenMP
-            // environments (like older g++) supported it well inside
-            // parallel regions. A safer OpenMP way is:
-            
-            // We can't use a shared m_start_order_id easily without a lock.
-            // A simpler, high-performance way:
-            // Calculate a unique ID based on thread ID and loop index.
-            // This avoids any locking or atomics in the hot loop.
-            // (Assuming num_orders is much larger than num_threads)
-            
-            // uint64_t order_id = (omp_get_thread_num() * (num_orders / omp_get_num_threads())) + i;
-            // The loop index 'i' is already unique per *total* generation.
-            // We just need to add the starting offset.
-            
-            // Ah, wait. The loop is #pragma omp for. The index 'i' is
-            // from 0 to num_orders-1. This is already unique!
-            // We just need to add our starting offset.
-            uint64_t order_id = m_start_order_id + i;
-            
-            // Create a random order
-            Order order = create_random_order(order_id, thread_rng);
+        for (uint64_t index = 0; index < num_orders; ++index) {
+            Order* order = nullptr;
+            if (m_partitioned_pool != nullptr) {
+                order = m_partitioned_pool->acquire(tid);
+            } else if (m_order_pool != nullptr) {
+                order = m_order_pool->acquire();
+            }
 
-            // Submit the order to the engine.
-            // This will call MatchingEngine::add_order(),
-            // which contains our std::mutex. The threads will
-            // compete for this lock.
-            m_engine.add_order(order);
+            if (order == nullptr) {
+                ++rejected_orders;
+                continue;
+            }
+
+            uint64_t order_id = m_start_order_id + index;
+            populate_random_order(order, order_id, thread_rng);
+
+            if (!validate_order(*order)) {
+                if (m_partitioned_pool != nullptr) {
+                    m_partitioned_pool->release(tid, order);
+                } else if (m_order_pool != nullptr) {
+                    m_order_pool->release(order);
+                }
+                ++rejected_orders;
+                continue;
+            }
+
+            if (!m_engine.submit_order(order)) {
+                if (m_partitioned_pool != nullptr) {
+                    m_partitioned_pool->release(tid, order);
+                } else if (m_order_pool != nullptr) {
+                    m_order_pool->release(order);
+                }
+                ++rejected_orders;
+            }
         }
     }
-    // --- End of Parallel Region ---
-    // All threads sync up here.
 
-    // Stop timer
     double end_time = omp_get_wtime();
-    m_time_taken_ms = (end_time - start_time) * 1000.0; // Convert to milliseconds
-
-    // Update the starting ID for the next batch
+    m_time_taken_ms = (end_time - start_time) * 1000.0;
+    m_rejected_orders = rejected_orders;
     m_start_order_id += num_orders;
 }

@@ -106,7 +106,7 @@ main {
 canvas {
     position: absolute;
     width: 100% !important;
-    height: 100% !important;
+    height: 100% !imporant;
 }
 
 /* --- Panel 3: Live Feed --- */
@@ -147,7 +147,83 @@ canvas {
 
 
 /* --- Status Indicator --- */
-#status-indicator { /* ... (unchanged) ... */ }
-#status-indicator.connecting { /* ... (unchanged) ... */ }
-#status-indicator.live { /* ... (unchanged) ... */ }
-@keyframes pulse { /* ... (unchanged) ... */ }
+#status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+#status-indicator.connecting {
+    background-color: var(--red-color);
+    animation: pulse 1.5s infinite;
+}
+
+#status-indicator.live {
+    background-color: var(--green-color);
+    animation: none;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.3; }
+    100% { opacity: 1; }
+}
+
+/* (All other styles are identical) */
+
+/* --- Header --- */
+header {
+    background-color: var(--card-color);
+    border-bottom: 2px solid var(--border-color);
+    padding: 10px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+h1 { /* (identical) */ }
+.status-bar { /* (identical) */ }
+
+/* *** NEW FEATURE STYLES *** */
+#pauseButton {
+    padding: 8px 16px;
+    font-size: 1em;
+    font-weight: 600;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#pauseButton.running {
+    background-color: var(--red-color);
+}
+#pauseButton.running:hover {
+    background-color: #ff6666;
+}
+
+#pauseButton.paused {
+    background-color: var(--green-color);
+}
+#pauseButton.paused:hover {
+    background-color: #2cffb0;
+}
+
+#pauseButton:disabled {
+    background-color: var(--border-color);
+    color: #888;
+    cursor: not-allowed;
+}
+/* *** END NEW FEATURE STYLES *** */
+
+
+/* --- Main 3-Column Layout --- */
+main { /* (identical) */ }
+.panel { /* (identical) */ }
+.panel h2 { /* (identical) */ }
+/* (Rest of the file is identical) */

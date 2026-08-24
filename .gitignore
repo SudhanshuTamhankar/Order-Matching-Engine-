@@ -1,5 +1,8 @@
-﻿# Python venvs
+# Python venvs
+.venv/
+*/.venv/
 dashboard/.venv/
+demo/.venv/
 venv/
 .env/
 
@@ -10,6 +13,7 @@ __pycache__/
 
 # CMake / build artifacts
 build/
+build-*/
 bin/
 obj/
 CMakeFiles/

@@ -1,87 +1,111 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
-#include <cstdint> // For uint64_t
-#include <iostream> // For std::ostream
-#include <iomanip>  // For std::setprecision
 
-/**
- * @enum OrderSide
- * @brief Defines the side of an order (BUY or SELL).
- */
-enum class OrderSide {
+using Price = int64_t;
+
+constexpr Price kPriceScale = 10000;
+
+enum class OrderRequestType : uint8_t {
+    NEW,
+    CANCEL
+};
+
+enum class OrderSide : uint8_t {
     BUY,
     SELL
 };
 
-/**
- * @enum OrderType
- * @brief Defines the type of an order.
- * - MARKET: Execute immediately at the best available price.
- * - LIMIT: Execute at a specified price or better.
- * - IOC: Immediate Or Cancel. Execute any portion possible immediately
- * and cancel the rest.
- */
-enum class OrderType {
+enum class OrderType : uint8_t {
     MARKET,
     LIMIT,
     IOC
 };
 
-/**
- * @class Order
- * @brief Represents a single order in the matching engine.
- *
- * This class is a simple data container (struct-like) for order properties.
- * It's designed to be lightweight and efficiently stored in the order book.
- */
+enum class TimeInForce : uint8_t {
+    GTC, // Good 'Til Cancelled
+    IOC, // Immediate Or Cancel
+    FOK  // Fill Or Kill
+};
+
+struct DepthLevel {
+    Price price = 0;
+    uint64_t total_volume = 0;
+    uint64_t order_count = 0;
+};
+
+Price price_from_double(double value);
+double price_to_double(Price value);
+std::string format_price(Price value);
+
 class Order {
 public:
-    /**
-     * @brief Constructor for an Order.
-     * @param id Unique identifier for the order.
-     * @param side BUY or SELL.
-     * @param type MARKET, LIMIT, or IOC.
-     * @param price The price for LIMIT orders (0.0 for MARKET orders).
-     * @param quantity The number of shares.
-     * @param timestamp The time the order was received (e.g., nanoseconds since epoch).
-     */
-    Order(uint64_t id, OrderSide side, OrderType type, double price, uint64_t quantity, uint64_t timestamp);
+    Order();
+    Order(uint64_t id,
+          OrderSide side,
+          OrderType type,
+          Price price,
+          uint64_t quantity,
+          uint64_t timestamp,
+          uint32_t asset_id = 1,
+          uint32_t account_id = 1,
+          uint64_t client_order_id = 0);
 
-    // --- Getters (all const) ---
+    static Order make_cancel(uint64_t request_id,
+                             uint64_t target_order_id,
+                             uint64_t timestamp,
+                             uint32_t asset_id = 1,
+                             uint32_t account_id = 1);
+
+    void reset_new(uint64_t id,
+                   OrderSide side,
+                   OrderType type,
+                   Price price,
+                   uint64_t quantity,
+                   uint64_t timestamp,
+                   uint32_t asset_id = 1,
+                   uint32_t account_id = 1,
+                   uint64_t client_order_id = 0);
+
+    void reset_cancel(uint64_t request_id,
+                      uint64_t target_order_id,
+                      uint64_t timestamp,
+                      uint32_t asset_id = 1,
+                      uint32_t account_id = 1);
 
     uint64_t get_id() const { return m_id; }
+    uint64_t get_cancel_target_id() const { return m_cancel_target_id; }
+    OrderRequestType get_request_type() const { return m_request_type; }
     OrderSide get_side() const { return m_side; }
     OrderType get_type() const { return m_type; }
-    double get_price() const { return m_price; }
+    TimeInForce get_tif() const { return m_tif; }
+    Price get_price() const { return m_price; }
     uint64_t get_quantity() const { return m_quantity; }
     uint64_t get_timestamp() const { return m_timestamp; }
+    uint32_t get_asset_id() const { return m_asset_id; }
+    uint32_t get_account_id() const { return m_account_id; }
+    uint64_t get_client_order_id() const { return m_client_order_id; }
 
-    // --- Setters (Mutators) ---
-
-    /**
-     * @brief Updates the quantity of the order (e.g., after a partial fill).
-     * @param new_quantity The remaining quantity.
-     */
     void set_quantity(uint64_t new_quantity) { m_quantity = new_quantity; }
+    void set_tif(TimeInForce tif) { m_tif = tif; }
 
-    // --- Utility Functions ---
-
-    /**
-     * @brief Checks if the order is fully filled (quantity is zero).
-     */
+    bool is_cancel_request() const { return m_request_type == OrderRequestType::CANCEL; }
     bool is_filled() const { return m_quantity == 0; }
 
-    /**
-     * @brief Generates a human-readable string representation of the order.
-     */
     std::string to_string() const;
 
 private:
-    uint64_t m_id;         // Unique order ID
-    OrderSide m_side;      // BUY or SELL
-    OrderType m_type;      // MARKET, LIMIT, IOC
-    double m_price;        // Price (for LIMIT orders)
-    uint64_t m_quantity;   // Remaining quantity
-    uint64_t m_timestamp;  // Order reception time
+    uint64_t m_id;
+    uint64_t m_cancel_target_id;
+    uint64_t m_client_order_id;
+    Price m_price;
+    uint64_t m_quantity;
+    uint64_t m_timestamp;
+    uint32_t m_asset_id;
+    uint32_t m_account_id;
+    OrderRequestType m_request_type;
+    OrderSide m_side;
+    OrderType m_type;
+    TimeInForce m_tif;
 };

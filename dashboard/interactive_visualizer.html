@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ApexMatch | Ultra-Low Latency Order Matching Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="interactive_visualizer.css">
+  <!-- KaTeX for Textbook-Quality Mathematical Rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}]});"></script>
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="navbar">
+    <div class="nav-brand">
+      <div class="brand-logo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">ApexMatch Engine</div>
+        <div class="brand-subtitle">Deterministic In-Memory Order Matching Core (C++17)</div>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="story">Pipeline Lifecycle</button>
+      <button class="tab-btn" data-tab="terminal">Market Data & DOM</button>
+      <button class="tab-btn" data-tab="benchmark">Throughput Benchmark</button>
+      <button class="tab-btn" data-tab="architecture">System Architecture</button>
+    </nav>
+
+    <div class="nav-status">
+      <span class="status-indicator"></span>
+      <span class="status-text">Single-Writer Core: Active</span>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="content-wrapper">
+
+    <!-- ========================================== -->
+    <!-- TAB 1: PIPELINE LIFECYCLE                   -->
+    <!-- ========================================== -->
+    <section id="tab-story" class="tab-content active">
+      
+      <!-- Scenario Selector Cards -->
+      <div class="scenario-cards-container">
+        <div class="scenario-card active" data-scenario="limit_rest">
+          <div class="sc-header">
+            <span class="sc-badge blue">Case 01</span>
+            <span class="sc-metric">Non-Crossing</span>
+          </div>
+          <div class="sc-title">Limit Order Insertion</div>
+          <div class="sc-desc">Order arrives, evaluates spread, and rests on the active Bid ladder.</div>
+        </div>
+
+        <div class="scenario-card" data-scenario="market_sweep">
+          <div class="sc-header">
+            <span class="sc-badge green">Case 02</span>
+            <span class="sc-metric">Aggressive Taker</span>
+          </div>
+          <div class="sc-title">Market Order Sweep</div>
+          <div class="sc-desc">Aggressive buy order consumes available Ask depth across FIFO queues.</div>
+        </div>
+
+        <div class="scenario-card" data-scenario="ioc_partial">
+          <div class="sc-header">
+            <span class="sc-badge yellow">Case 03</span>
+            <span class="sc-metric">Partial Fill</span>
+          </div>
+          <div class="sc-title">Immediate-Or-Cancel (IOC)</div>
+          <div class="sc-desc">Executes available counterparty volume and cancels residual balance.</div>
+        </div>
+
+        <div class="scenario-card" data-scenario="hash_cancel">
+          <div class="sc-header">
+            <span class="sc-badge purple">Case 04</span>
+            <span class="sc-metric">O(1) Direct Erasure</span>
+          </div>
+          <div class="sc-title">Hash Index Cancellation</div>
+          <div class="sc-desc">Direct iterator extraction and queue detachment bypassing tree traversal.</div>
+        </div>
+      </div>
+
+      <!-- Hero Pipeline Stage Conveyor -->
+      <div class="pipeline-hero-card">
+        <div class="pipeline-header">
+          <div class="pipeline-title-group">
+            <span class="step-counter-badge" id="story-step-badge">Step 1 of 5</span>
+            <h2 id="story-step-title">Order Allocation in Memory Pool</h2>
+          </div>
+          
+          <!-- Playback Controls -->
+          <div class="story-controls">
+            <button id="btn-story-reset" class="ctrl-btn-outline" title="Reset scenario">Reset</button>
+            <button id="btn-story-prev" class="ctrl-btn-outline" title="Previous step">Previous</button>
+            <button id="btn-story-play" class="ctrl-btn-primary">Auto Play</button>
+            <button id="btn-story-next" class="ctrl-btn-accent">Next Step</button>
+            <div class="speed-pill">
+              <span>Speed:</span>
+              <select id="story-speed">
+                <option value="0.5">0.5x</option>
+                <option value="1.0" selected>1.0x</option>
+                <option value="2.0">2.0x</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Visual 4-Stage Horizontal Pipeline -->
+        <div class="stages-track">
+          <!-- Stage 1 -->
+          <div class="track-node active" id="node-stage-1">
+            <div class="node-circle">01</div>
+            <div class="node-label">Memory Pool</div>
+            <div class="node-sub">Zero Runtime Malloc</div>
+          </div>
+          <div class="track-line" id="line-1-2"></div>
+
+          <!-- Stage 2 -->
+          <div class="track-node" id="node-stage-2">
+            <div class="node-circle">02</div>
+            <div class="node-label">Ingress & Validation</div>
+            <div class="node-sub">OpenMP Multi-Core</div>
+          </div>
+          <div class="track-line" id="line-2-3"></div>
+
+          <!-- Stage 3 -->
+          <div class="track-node" id="node-stage-3">
+            <div class="node-circle">03</div>
+            <div class="node-label">Matching Core</div>
+            <div class="node-sub">Deterministic FIFO</div>
+          </div>
+          <div class="track-line" id="line-3-4"></div>
+
+          <!-- Stage 4 -->
+          <div class="track-node" id="node-stage-4">
+            <div class="node-circle">04</div>
+            <div class="node-label">Telemetry Ring</div>
+            <div class="node-sub">Lock-Free SPSC</div>
+          </div>
+        </div>
+
+        <!-- Animated Traveling Order Packet -->
+        <div class="packet-stage-container">
+          <div class="order-packet-card" id="animated-order-packet">
+            <div class="packet-tag" id="packet-side-tag">BUY LIMIT</div>
+            <div class="packet-body">
+              <div class="packet-id" id="packet-id-text">Order #301</div>
+              <div class="packet-details" id="packet-details-text">45 shares @ $100.5000</div>
+            </div>
+            <div class="packet-state" id="packet-state-text">Memory Allocated</div>
+          </div>
+        </div>
+
+        <!-- Narrative Card -->
+        <div class="narrative-box">
+          <div class="narrative-main">
+            <div>
+              <h4 id="narrative-heading">Execution State</h4>
+              <p id="narrative-desc">The order acquires a preallocated pointer from the contiguous OrderPool free list. No OS memory allocator primitive (malloc/new) is invoked.</p>
+            </div>
+          </div>
+          <div class="narrative-tech-badge">
+            <div class="tech-label">Algorithmic Complexity</div>
+            <div class="tech-val" id="narrative-complexity">O(1) Constant Time</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Split View: Order Book & Hash Index -->
+      <div class="story-dual-grid">
+        
+        <!-- Order Book Depth Visualizer -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">In-Memory Order Book State</div>
+            <span class="badge-blue">Price Priority (std::map)</span>
+          </div>
+          
+          <div class="book-columns-grid">
+            <!-- Bids Column -->
+            <div class="book-column bids-col">
+              <div class="col-head green">Bid Ladder (Desc)</div>
+              <div class="levels-container" id="story-bids-list"></div>
+            </div>
+
+            <!-- Asks Column -->
+            <div class="book-column asks-col">
+              <div class="col-head red">Ask Ladder (Asc)</div>
+              <div class="levels-container" id="story-asks-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inverted Hash Index Table -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">Inverted Order Index Table</div>
+            <span class="badge-purple">std::unordered_map</span>
+          </div>
+          
+          <p class="panel-desc">Maintains direct mappings from <code>OrderID ➔ PriceLevel Iterator</code> to enable constant-time cancellation without scanning.</p>
+          
+          <div class="hash-index-grid" id="story-hash-grid"></div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 2: MARKET DATA & DOM                    -->
+    <!-- ========================================== -->
+    <section id="tab-terminal" class="tab-content">
+      
+      <div class="terminal-grid">
+        <!-- Left: L2 Depth of Market DOM -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">Level 2 Depth of Market (DOM)</div>
+            <span class="badge-blue">Aggregated Book Depth</span>
+          </div>
+          
+          <div class="dom-table-wrapper">
+            <table class="modern-dom-table">
+              <thead>
+                <tr>
+                  <th>Price ($)</th>
+                  <th>Aggregated Volume</th>
+                  <th>Order Count</th>
+                  <th>Cumulative Depth</th>
+                </tr>
+              </thead>
+              <tbody id="terminal-dom-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right: Price Chart & Live Execution Tape -->
+        <div class="terminal-right-column">
+          <!-- Chart -->
+          <div class="panel-card">
+            <div class="panel-header">
+              <div class="panel-title">Last Traded Price (LTP) Trajectory</div>
+              <div class="last-price-badge" id="terminal-ltp-badge">$100.5000</div>
+            </div>
+            <div class="chart-wrapper">
+              <canvas id="terminal-chart" width="480" height="140"></canvas>
+            </div>
+          </div>
+
+          <!-- Trade Tape -->
+          <div class="panel-card">
+            <div class="panel-header">
+              <div class="panel-title">Execution Audit Tape</div>
+              <span class="badge-green">Asynchronous SPSC</span>
+            </div>
+            <div class="tape-wrapper">
+              <ul class="modern-tape-list" id="terminal-tape-list"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 3: BENCHMARK SUITE                     -->
+    <!-- ========================================== -->
+    <section id="tab-benchmark" class="tab-content">
+      <div class="benchmark-container">
+        
+        <div class="benchmark-hero">
+          <h2>High-Throughput Ingestion Benchmark</h2>
+          <p>Continuous execution test processing 1,000,000 synthetic multi-threaded limit, market, and cancellation orders through the ingestion pipeline.</p>
+          
+          <button id="btn-run-full-bench" class="btn-hero-benchmark">Execute 1,000,000 Order Benchmark</button>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-label">Ingress Throughput</div>
+            <div class="metric-val" id="metric-tps">124,500 <span class="unit">orders/sec</span></div>
+            <div class="metric-sub">OpenMP Multi-Core Ingestion</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Deterministic Latency</div>
+            <div class="metric-val highlight" id="metric-latency">0.78 <span class="unit">ms</span></div>
+            <div class="metric-sub">P99 Tail Bound</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Heap Allocation on Path</div>
+            <div class="metric-val green" id="metric-mallocs">0 <span class="unit">bytes</span></div>
+            <div class="metric-sub">Contiguous Pre-Allocated Storage</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Precision Encoding</div>
+            <div class="metric-val" id="metric-precision">10⁴ Fixed-Pt</div>
+            <div class="metric-sub">Exact 64-Bit Integer Arithmetic</div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 4: ARCHITECTURE & MATH WHITE PAPER     -->
+    <!-- ========================================== -->
+    <section id="tab-architecture" class="tab-content">
+      <div class="whitepaper-doc">
+        
+        <h2>Architectural Specification: High-Frequency In-Memory Matching Engine</h2>
+        <p class="lead">Mathematical models and systems design principles for ultra-low latency determinism in modern C++.</p>
+
+        <div class="wp-grid">
+          <!-- Section 1: Fixed Point Arithmetic -->
+          <div class="wp-card">
+            <h3>1. Fixed-Point Decimal Quantization ($\mathcal{Q}$)</h3>
+            <p>Under IEEE-754 floating-point arithmetic, decimal representations accumulate non-deterministic rounding errors ($0.1 + 0.2 \neq 0.3$). Prices are mathematically projected onto scaled 64-bit signed integers:</p>
+            
+            <div class="math-box">
+              $$\mathcal{Q}(P_{\text{market}}) = \left\lfloor P_{\text{market}} \cdot 10^4 + 0.5 \right\rfloor \in \mathbb{Z}$$
+            </div>
+            
+            <p>Reconstruction mapping and bounded precision error:</p>
+            <div class="math-box">
+              $$P_{\text{market}} = P_{\text{internal}} \cdot 10^{-4}, \quad \varepsilon \le \frac{1}{2} \cdot 10^{-4} = \$0.00005$$
+            </div>
+            <p>Enforces deterministic integer comparisons across all CPU microarchitectures.</p>
+          </div>
+
+          <!-- Section 2: Order Priority Relation -->
+          <div class="wp-card">
+            <h3>2. Price-Time Priority Strict Ordering Relation ($\succ$)</h3>
+            <p>For any two orders $O_i = (P_i, t_i, q_i)$ and $O_j = (P_j, t_j, q_j)$ submitted to the engine:</p>
+            
+            <div class="math-box">
+              $$O_i \succ_{\text{Bid}} O_j \iff (P_i > P_j) \;\lor\; \big(P_i = P_j \;\land\; t_i < t_j\big)$$
+            </div>
+            
+            <div class="math-box">
+              $$O_i \succ_{\text{Ask}} O_j \iff (P_i < P_j) \;\lor\; \big(P_i = P_j \;\land\; t_i < t_j\big)$$
+            </div>
+            <p>Enforced using sorted Red-Black Trees (<code>std::map</code>) nested with FIFO doubly-linked lists (<code>std::list</code>).</p>
+          </div>
+
+          <!-- Section 3: Double Auction Crossing Condition -->
+          <div class="wp-card">
+            <h3>3. Continuous Double Auction Crossing Invariant</h3>
+            <p>Let $P_{\text{bid}}^* = \max_{B \in \mathcal{B}} P(B)$ and $P_{\text{ask}}^* = \min_{A \in \mathcal{A}} P(A)$. A continuous trade execution is triggered if and only if the bid-ask spread crosses:</p>
+            
+            <div class="math-box">
+              $$\Delta_{\text{spread}} = P_{\text{ask}}^* - P_{\text{bid}}^* \le 0$$
+            </div>
+            
+            <div class="math-box">
+              $$P_{\text{match}} = P_{\text{maker}}, \quad Q_{\text{match}} = \min\big(Q_{\text{taker}}, Q_{\text{maker}}\big)$$
+            </div>
+            <p>Execution price is strictly determined by the resting maker order.</p>
+          </div>
+
+          <!-- Section 4: Inverted Hash Index Complexity -->
+          <div class="wp-card">
+            <h3>4. Inverted Hash Index Table $\mathcal{O}(1)$ Cancellation</h3>
+            <p>Direct hash-indexed iterator dereferencing eliminates tree traversal latency:</p>
+            <div class="math-box">
+              $$\mathcal{M}: \text{OrderID} \to (\text{Side}, \text{Price}, \text{Iterator}_{\text{list}})$$
+            </div>
+            <div class="math-box">
+              $$T_{\text{cancel}} = \mathcal{O}(1) \text{ hash lookup} + \mathcal{O}(1) \text{ list erasure} = \mathcal{O}(1)$$
+            </div>
+            <p>Eliminates the $\mathcal{O}(N)$ or $\mathcal{O}(\log N)$ cancellation bottleneck in high-frequency trading.</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <script src="interactive_visualizer.js"></script>
+</body>
+</html>
