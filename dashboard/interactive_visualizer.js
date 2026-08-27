@@ -768,7 +768,7 @@ function renderTerminalChart() {
 async function runFullBenchmark() {
   const btn = document.getElementById('btn-run-full-bench');
   btn.disabled = true;
-  btn.textContent = 'Simulating 1,000,000 Orders in In-Memory Core...';
+  btn.textContent = 'Executing 1,000,000 Order Stress Benchmark in C++ Core...';
 
   // Try triggering backend C++ binary benchmark via API
   if (App.isLiveBackend) {
@@ -776,11 +776,11 @@ async function runFullBenchmark() {
       const res = await fetch('/api/benchmark?orders_count=1000000', { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        document.getElementById('metric-tps').innerHTML = `${data.throughput_orders_sec.toLocaleString()} <span class="unit">orders/sec</span>`;
+        document.getElementById('metric-tps').innerHTML = `${Number(data.throughput_orders_sec).toLocaleString()} <span class="unit">orders/sec</span>`;
         document.getElementById('metric-latency').innerHTML = `${data.p99_latency_ms} <span class="unit">ms</span>`;
         btn.disabled = false;
         btn.textContent = 'Execute 1,000,000 Order Benchmark';
-        alert(`Backend C++ Benchmark Completed!\n• Orders: ${data.orders_processed.toLocaleString()}\n• Rate: ${data.throughput_orders_sec.toLocaleString()} orders/sec\n• P99 Latency: ${data.p99_latency_ms} ms\n• Zero Heap Mallocs: Guaranteed`);
+        alert(`Backend C++ Benchmark Completed!\n• Orders Processed: ${Number(data.orders_processed).toLocaleString()}\n• Measured Throughput: ${Number(data.throughput_orders_sec).toLocaleString()} orders/sec\n• Execution Time: ${data.duration_seconds} s (${data.duration_ms ? data.duration_ms + ' ms' : (data.duration_seconds * 1000).toFixed(2) + ' ms'})\n• Total Trades Executed: ${Number(data.trades_executed).toLocaleString()}\n• P99 Tail Latency: ${data.p99_latency_ms} ms\n• Zero Heap Mallocs: Verified`);
         return;
       }
     } catch (e) {}

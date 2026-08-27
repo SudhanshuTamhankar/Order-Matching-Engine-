@@ -5,6 +5,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <chrono>
 
 #include <omp.h>
 
@@ -123,8 +124,17 @@ void snapshot_writer_function(MatchingEngine& engine, const string& snapshot_pat
 
 } // namespace
 
-int main() {
-    const uint64_t total_orders = 1000000;
+int main(int argc, char* argv[]) {
+    uint64_t total_orders = 1000000;
+    if (argc > 1) {
+        try {
+            total_orders = std::stoull(argv[1]);
+            if (total_orders == 0) total_orders = 1000000;
+        } catch (...) {
+            total_orders = 1000000;
+        }
+    }
+
     const string trade_log_path = "results/trades.json";
     const string snapshot_log_path = "results/book_snapshots.jsonl";
     const int num_threads = omp_get_max_threads() > 0 ? omp_get_max_threads() : 4;
