@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="interactive_visualizer.css">
-  <!-- KaTeX for Textbook-Quality Mathematical Rendering -->
+  <!-- KaTeX for Mathematical Rendering -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
@@ -33,14 +33,14 @@
     <!-- Navigation Tabs -->
     <nav class="nav-tabs">
       <button class="tab-btn active" data-tab="story">Pipeline Lifecycle</button>
-      <button class="tab-btn" data-tab="terminal">Market Data & DOM</button>
+      <button class="tab-btn" data-tab="terminal">Market Data & Live Order Entry</button>
       <button class="tab-btn" data-tab="benchmark">Throughput Benchmark</button>
       <button class="tab-btn" data-tab="architecture">System Architecture</button>
     </nav>
 
-    <div class="nav-status">
-      <span class="status-indicator"></span>
-      <span class="status-text">Single-Writer Core: Active</span>
+    <div class="nav-status" id="backend-status-pill">
+      <span class="status-indicator" id="backend-status-dot"></span>
+      <span class="status-text" id="backend-status-label">Backend: Connecting...</span>
     </div>
   </header>
 
@@ -220,16 +220,84 @@
     </section>
 
     <!-- ========================================== -->
-    <!-- TAB 2: MARKET DATA & DOM                    -->
+    <!-- TAB 2: MARKET DATA & LIVE ORDER ENTRY       -->
     <!-- ========================================== -->
     <section id="tab-terminal" class="tab-content">
       
-      <div class="terminal-grid">
-        <!-- Left: L2 Depth of Market DOM -->
+      <div class="terminal-three-col-grid">
+        
+        <!-- Column 1: Live Interactive Order Entry Form -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">Live Order Ingress Gateway</div>
+            <span class="badge-blue" id="ingress-badge">Live API</span>
+          </div>
+          
+          <form id="live-order-form" class="order-entry-form" onsubmit="event.preventDefault(); submitLiveOrder();">
+            <!-- Side Toggle -->
+            <div class="form-group">
+              <label class="form-label">Order Side</label>
+              <div class="side-toggle-group">
+                <button type="button" id="side-buy-btn" class="side-btn buy active" onclick="setOrderSide('BUY')">BUY</button>
+                <button type="button" id="side-sell-btn" class="side-btn sell" onclick="setOrderSide('SELL')">SELL</button>
+              </div>
+            </div>
+
+            <!-- Type Selector -->
+            <div class="form-group">
+              <label class="form-label">Order Type & Time-In-Force</label>
+              <div class="form-row-2">
+                <select id="order-type-select" class="form-input">
+                  <option value="LIMIT" selected>LIMIT</option>
+                  <option value="MARKET">MARKET</option>
+                  <option value="IOC">IOC (Immediate-Or-Cancel)</option>
+                </select>
+                <select id="order-tif-select" class="form-input">
+                  <option value="GTC" selected>GTC</option>
+                  <option value="IOC">IOC</option>
+                  <option value="FOK">FOK</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Price & Quantity -->
+            <div class="form-group">
+              <div class="form-row-2">
+                <div>
+                  <label class="form-label">Price ($ USD)</label>
+                  <input type="number" id="order-price-input" class="form-input mono" step="0.01" value="100.50" required />
+                </div>
+                <div>
+                  <label class="form-label">Quantity (Shares)</label>
+                  <input type="number" id="order-qty-input" class="form-input mono" step="1" value="50" required />
+                </div>
+              </div>
+            </div>
+
+            <!-- Submit Button -->
+            <button type="submit" id="submit-order-btn" class="btn-submit-order buy">
+              Submit BUY Order to Core
+            </button>
+
+            <!-- Quick Presets -->
+            <div class="quick-actions-bar">
+              <button type="button" class="quick-btn" onclick="quickFill(100.40, 50, 'BUY')">+Bid $100.40</button>
+              <button type="button" class="quick-btn" onclick="quickFill(100.60, 50, 'SELL')">+Ask $100.60</button>
+              <button type="button" class="quick-btn sweep" onclick="quickMarketSweep()">Sweep Book</button>
+            </div>
+          </form>
+
+          <!-- Ingress Feedback Console -->
+          <div class="ingress-console" id="ingress-console">
+            <div class="console-line text-muted">Core ready. Submit an order above to execute live in C++ engine.</div>
+          </div>
+        </div>
+
+        <!-- Column 2: L2 Depth of Market (DOM) -->
         <div class="panel-card">
           <div class="panel-header">
             <div class="panel-title">Level 2 Depth of Market (DOM)</div>
-            <span class="badge-blue">Aggregated Book Depth</span>
+            <span class="badge-green">Price-Time FIFO</span>
           </div>
           
           <div class="dom-table-wrapper">
@@ -237,9 +305,10 @@
               <thead>
                 <tr>
                   <th>Price ($)</th>
-                  <th>Aggregated Volume</th>
-                  <th>Order Count</th>
-                  <th>Cumulative Depth</th>
+                  <th>Aggregated Vol</th>
+                  <th>Orders</th>
+                  <th>Depth Visual</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody id="terminal-dom-tbody"></tbody>
@@ -247,16 +316,16 @@
           </div>
         </div>
 
-        <!-- Right: Price Chart & Live Execution Tape -->
+        <!-- Column 3: Price Trajectory & Execution Tape -->
         <div class="terminal-right-column">
           <!-- Chart -->
           <div class="panel-card">
             <div class="panel-header">
-              <div class="panel-title">Last Traded Price (LTP) Trajectory</div>
+              <div class="panel-title">Last Traded Price (LTP)</div>
               <div class="last-price-badge" id="terminal-ltp-badge">$100.5000</div>
             </div>
             <div class="chart-wrapper">
-              <canvas id="terminal-chart" width="480" height="140"></canvas>
+              <canvas id="terminal-chart" width="420" height="130"></canvas>
             </div>
           </div>
 
@@ -264,13 +333,14 @@
           <div class="panel-card">
             <div class="panel-header">
               <div class="panel-title">Execution Audit Tape</div>
-              <span class="badge-green">Asynchronous SPSC</span>
+              <span class="badge-green">Real-time SPSC Feed</span>
             </div>
             <div class="tape-wrapper">
               <ul class="modern-tape-list" id="terminal-tape-list"></ul>
             </div>
           </div>
         </div>
+
       </div>
 
     </section>

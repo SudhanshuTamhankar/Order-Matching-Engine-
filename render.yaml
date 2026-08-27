@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: apexmatch-engine
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 10000
+    autoDeploy: true

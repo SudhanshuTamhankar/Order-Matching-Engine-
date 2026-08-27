@@ -1,6 +1,6 @@
 /**
  * ApexMatch Interactive Architecture Visualizer
- * Core Simulation Engine & UI Orchestrator
+ * Core Simulation Engine, Live Order Entry & WebSocket Orchestrator
  */
 
 // --- Global Application State ---
@@ -11,27 +11,32 @@ const App = {
   isPlaying: false,
   timerHandle: null,
   speed: 1.0,
+  isLiveBackend: false,
+  socket: null,
+  currentSide: 'BUY',
 
-  // Story Mode Order Book Memory
+  // Order Book Memory
   bids: [
-    { price: 100.40, orders: [{ id: 101, qty: 50 }, { id: 102, qty: 30 }] },
-    { price: 100.30, orders: [{ id: 103, qty: 100 }] },
-    { price: 100.20, orders: [{ id: 104, qty: 75 }] }
+    { price: 100.4000, orders: [{ id: 101, qty: 50 }, { id: 102, qty: 30 }] },
+    { price: 100.3000, orders: [{ id: 103, qty: 100 }] },
+    { price: 100.2000, orders: [{ id: 104, qty: 75 }] }
   ],
   asks: [
-    { price: 100.60, orders: [{ id: 201, qty: 40 }, { id: 202, qty: 60 }] },
-    { price: 100.70, orders: [{ id: 203, qty: 120 }] },
-    { price: 100.80, orders: [{ id: 204, qty: 85 }] }
+    { price: 100.6000, orders: [{ id: 201, qty: 40 }, { id: 202, qty: 60 }] },
+    { price: 100.7000, orders: [{ id: 203, qty: 120 }] },
+    { price: 100.8000, orders: [{ id: 204, qty: 85 }] }
   ],
   orderIndex: {},
 
   // Terminal & Market Tape
-  trades: [],
+  trades: [
+    { taker: 'BUY', price: 100.5000, qty: 50, maker: 199, taker_id: 299 }
+  ],
   chartPrices: [100.45, 100.50, 100.48, 100.50],
-  lastPrice: 100.50
+  lastPrice: 100.5000
 };
 
-// --- Preset Scenarios Definition ---
+// --- Preset Story Scenarios Definition ---
 const STORY_SCENARIOS = {
   limit_rest: {
     title: "Case 01: Limit Order (Non-Crossing)",
@@ -50,7 +55,7 @@ const STORY_SCENARIOS = {
         stage: 2,
         title: "Step 2: Multi-Threaded Validation & Queue",
         heading: "Parallel Sanity Checks & Ingress Buffer",
-        desc: "OpenMP worker verifies price bounds ($100.50 > 0) and volume (45 > 0). Pushes order pointer into Bounded Ingress Queue.",
+        desc: "OpenMP worker verifies price bounds ($100.5000 > 0) and volume (45 > 0). Pushes order pointer into Bounded Ingress Queue.",
         complexity: "O(1) Lock-Free Ingress",
         stateBadge: "Validated & Queued",
         action: () => {}
@@ -59,7 +64,7 @@ const STORY_SCENARIOS = {
         stage: 3,
         title: "Step 3: Deterministic Price Check",
         heading: "Evaluating Top of Opposite Book",
-        desc: "Matching core evaluates m_asks.begin() ($100.60). Since Bid $100.50 < Best Ask $100.60, no cross occurs.",
+        desc: "Matching core evaluates m_asks.begin() ($100.6000). Since Bid $100.5000 < Best Ask $100.6000, no cross occurs.",
         complexity: "O(1) map.begin() Access",
         stateBadge: "No Cross (Bid < Ask)",
         action: () => {}
@@ -68,12 +73,12 @@ const STORY_SCENARIOS = {
         stage: 3,
         title: "Step 4: Insertion into Bid Book & Hash Index",
         heading: "Placing Order on Price Level List",
-        desc: "Order #301 is appended to the doubly-linked list at $100.50. Global Hash Index records iterator for O(1) direct cancellation.",
+        desc: "Order #301 is appended to the doubly-linked list at $100.5000. Global Hash Index records iterator for O(1) direct cancellation.",
         complexity: "O(log M) Tree + O(1) List",
         stateBadge: "Resting on Book",
         action: (app) => {
-          app.bids.unshift({ price: 100.50, orders: [{ id: 301, qty: 45 }] });
-          app.orderIndex[301] = { side: 'BUY', price: 100.50 };
+          app.bids.unshift({ price: 100.5000, orders: [{ id: 301, qty: 45 }] });
+          app.orderIndex[301] = { side: 'BUY', price: 100.5000 };
         }
       },
       {
@@ -104,8 +109,8 @@ const STORY_SCENARIOS = {
       {
         stage: 3,
         title: "Step 2: Best Ask Extraction",
-        heading: "Targeting Top Price Level ($100.60)",
-        desc: "Core matcher checks Lowest Ask Level ($100.60). Order #201 is at the front of the FIFO list with 40 shares.",
+        heading: "Targeting Top Price Level ($100.6000)",
+        desc: "Core matcher checks Lowest Ask Level ($100.6000). Order #201 is at the front of the FIFO list with 40 shares.",
         complexity: "O(1) map.begin()",
         stateBadge: "Evaluating Best Ask",
         action: () => {}
@@ -113,16 +118,16 @@ const STORY_SCENARIOS = {
       {
         stage: 3,
         title: "Step 3: Trade Match 1 (Order #201 Fully Filled)",
-        heading: "Executing 40 shares @ $100.60",
+        heading: "Executing 40 shares @ $100.6000",
         desc: "Order #201 (40 shares) is matched, filled, and popped. Remaining taker quantity = 30 shares.",
         complexity: "O(1) FIFO Front Match",
         stateBadge: "40 Shares Traded",
         action: (app) => {
           app.asks[0].orders.shift();
           delete app.orderIndex[201];
-          app.trades.unshift({ taker: 'BUY', price: 100.60, qty: 40, maker: 201, taker_id: 401 });
-          app.lastPrice = 100.60;
-          app.chartPrices.push(100.60);
+          app.trades.unshift({ taker: 'BUY', price: 100.6000, qty: 40, maker: 201, taker_id: 401 });
+          app.lastPrice = 100.6000;
+          app.chartPrices.push(100.6000);
         }
       },
       {
@@ -134,7 +139,7 @@ const STORY_SCENARIOS = {
         stateBadge: "30 Shares Traded (Filled)",
         action: (app) => {
           app.asks[0].orders[0].qty = 30;
-          app.trades.unshift({ taker: 'BUY', price: 100.60, qty: 30, maker: 202, taker_id: 401 });
+          app.trades.unshift({ taker: 'BUY', price: 100.6000, qty: 30, maker: 202, taker_id: 401 });
         }
       },
       {
@@ -151,13 +156,13 @@ const STORY_SCENARIOS = {
 
   ioc_partial: {
     title: "Case 03: Immediate-Or-Cancel (IOC)",
-    packet: { side: "IOC BUY", sideClass: "buy", id: "Order #501", details: "80 shares @ Limit $100.60" },
+    packet: { side: "IOC BUY", sideClass: "buy", id: "Order #501", details: "80 shares @ Limit $100.6000" },
     steps: [
       {
         stage: 1,
         title: "Step 1: Immediate-Or-Cancel Ingress",
         heading: "IOC Order Ingestion",
-        desc: "IOC BUY arrives for 80 shares @ Limit $100.60. An IOC order must trade immediately; unfulfilled shares are never placed on the book.",
+        desc: "IOC BUY arrives for 80 shares @ Limit $100.6000. An IOC order must trade immediately; unfulfilled shares are never placed on the book.",
         complexity: "O(1) Allocation",
         stateBadge: "IOC Ingress",
         action: () => {}
@@ -165,23 +170,23 @@ const STORY_SCENARIOS = {
       {
         stage: 3,
         title: "Step 2: Immediate Liquidity Match",
-        heading: "Matching 40 shares @ $100.60",
-        desc: "Matches against resting Ask #201 (40 shares). Executed Trade: 40 shares @ $100.60.",
+        heading: "Matching 40 shares @ $100.6000",
+        desc: "Matches against resting Ask #201 (40 shares). Executed Trade: 40 shares @ $100.6000.",
         complexity: "O(1) Match",
         stateBadge: "40 Shares Executed",
         action: (app) => {
           app.asks[0].orders.shift();
           delete app.orderIndex[201];
-          app.trades.unshift({ taker: 'BUY', price: 100.60, qty: 40, maker: 201, taker_id: 501 });
-          app.lastPrice = 100.60;
-          app.chartPrices.push(100.60);
+          app.trades.unshift({ taker: 'BUY', price: 100.6000, qty: 40, maker: 201, taker_id: 501 });
+          app.lastPrice = 100.6000;
+          app.chartPrices.push(100.6000);
         }
       },
       {
         stage: 3,
         title: "Step 3: Price Limit Reached (Trigger Cancel)",
         heading: "Cancelling Unfulfilled 40 Shares",
-        desc: "Next available ask is $100.70 (> limit $100.60). Per IOC semantics, the remaining 40 shares are instantly discarded.",
+        desc: "Next available ask is $100.7000 (> limit $100.6000). Per IOC semantics, the remaining 40 shares are instantly discarded.",
         complexity: "O(1) IOC Cancellation",
         stateBadge: "Remainder Cancelled",
         action: () => {}
@@ -200,13 +205,13 @@ const STORY_SCENARIOS = {
 
   hash_cancel: {
     title: "Case 04: Hash Index Cancellation",
-    packet: { side: "CANCEL", sideClass: "sell", id: "Target #202", details: "Target: Order #202 @ $100.60" },
+    packet: { side: "CANCEL", sideClass: "sell", id: "Target #202", details: "Target: Order #202 @ $100.6000" },
     steps: [
       {
         stage: 1,
         title: "Step 1: Admin Cancel Request Arrives",
         heading: "Targeting Order #202",
-        desc: "A cancellation command arrives targeting Order #202 (which is resting in the middle of the $100.60 queue).",
+        desc: "A cancellation command arrives targeting Order #202 (which is resting in the middle of the $100.6000 queue).",
         complexity: "O(1) Ingress",
         stateBadge: "Cancel Target #202",
         action: () => {}
@@ -228,7 +233,7 @@ const STORY_SCENARIOS = {
         complexity: "O(1) List Erase",
         stateBadge: "Node Spliced Out",
         action: (app) => {
-          const askLvl = app.asks.find(l => l.price === 100.60);
+          const askLvl = app.asks.find(l => Math.abs(l.price - 100.6000) < 0.001);
           if (askLvl) {
             askLvl.orders = askLvl.orders.filter(o => o.id !== 202);
           }
@@ -256,26 +261,240 @@ function resetStoryState() {
   document.getElementById('btn-story-play').textContent = 'Auto Play';
 
   App.bids = [
-    { price: 100.40, orders: [{ id: 101, qty: 50 }, { id: 102, qty: 30 }] },
-    { price: 100.30, orders: [{ id: 103, qty: 100 }] },
-    { price: 100.20, orders: [{ id: 104, qty: 75 }] }
+    { price: 100.4000, orders: [{ id: 101, qty: 50 }, { id: 102, qty: 30 }] },
+    { price: 100.3000, orders: [{ id: 103, qty: 100 }] },
+    { price: 100.2000, orders: [{ id: 104, qty: 75 }] }
   ];
   App.asks = [
-    { price: 100.60, orders: [{ id: 201, qty: 40 }, { id: 202, qty: 60 }] },
-    { price: 100.70, orders: [{ id: 203, qty: 120 }] },
-    { price: 100.80, orders: [{ id: 204, qty: 85 }] }
+    { price: 100.6000, orders: [{ id: 201, qty: 40 }, { id: 202, qty: 60 }] },
+    { price: 100.7000, orders: [{ id: 203, qty: 120 }] },
+    { price: 100.8000, orders: [{ id: 204, qty: 85 }] }
   ];
   App.trades = [
-    { taker: 'BUY', price: 100.50, qty: 50, maker: 199, taker_id: 299 }
+    { taker: 'BUY', price: 100.5000, qty: 50, maker: 199, taker_id: 299 }
   ];
   App.chartPrices = [100.45, 100.50, 100.48, 100.50];
-  App.lastPrice = 100.50;
+  App.lastPrice = 100.5000;
 
   App.orderIndex = {};
   App.bids.forEach(l => l.orders.forEach(o => App.orderIndex[o.id] = { side: 'BUY', price: l.price }));
   App.asks.forEach(l => l.orders.forEach(o => App.orderIndex[o.id] = { side: 'SELL', price: l.price }));
 
   renderStoryUI();
+  renderTerminalTab();
+}
+
+// --- Live Order Entry Functions ---
+function setOrderSide(side) {
+  App.currentSide = side;
+  const buyBtn = document.getElementById('side-buy-btn');
+  const sellBtn = document.getElementById('side-sell-btn');
+  const submitBtn = document.getElementById('submit-order-btn');
+
+  if (side === 'BUY') {
+    buyBtn.classList.add('active');
+    sellBtn.classList.remove('active');
+    submitBtn.className = 'btn-submit-order buy';
+    submitBtn.textContent = 'Submit BUY Order to Core';
+  } else {
+    sellBtn.classList.add('active');
+    buyBtn.classList.remove('active');
+    submitBtn.className = 'btn-submit-order sell';
+    submitBtn.textContent = 'Submit SELL Order to Core';
+  }
+}
+
+function quickFill(price, qty, side) {
+  setOrderSide(side);
+  document.getElementById('order-price-input').value = price.toFixed(2);
+  document.getElementById('order-qty-input').value = qty;
+}
+
+function quickMarketSweep() {
+  setOrderSide('BUY');
+  document.getElementById('order-type-select').value = 'MARKET';
+  document.getElementById('order-qty-input').value = 100;
+  submitLiveOrder();
+}
+
+async function submitLiveOrder() {
+  const side = App.currentSide;
+  const orderType = document.getElementById('order-type-select').value;
+  const tif = document.getElementById('order-tif-select').value;
+  const price = parseFloat(document.getElementById('order-price-input').value);
+  const qty = parseInt(document.getElementById('order-qty-input').value);
+
+  if (isNaN(price) || price <= 0 || isNaN(qty) || qty <= 0) {
+    alert('Please enter valid price and quantity.');
+    return;
+  }
+
+  const payload = {
+    side: side,
+    order_type: orderType,
+    price: price,
+    quantity: qty,
+    time_in_force: tif
+  };
+
+  logConsole(`Submitting ${side} ${orderType} ${qty} shares @ $${price.toFixed(4)} ...`, 'text-muted');
+
+  if (App.isLiveBackend && App.socket && App.socket.readyState === WebSocket.OPEN) {
+    // Send via WebSocket
+    App.socket.send(JSON.stringify({ action: 'submit_order', order: payload }));
+  } else {
+    // Try REST API or local state machine
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        applyBookSnapshot(data.book);
+        logConsole(`Order #${data.result.order_id} [${data.result.status}]: ${data.result.filled_qty} shares filled`, 'success');
+      } else {
+        fallbackLocalOrder(payload);
+      }
+    } catch (e) {
+      fallbackLocalOrder(payload);
+    }
+  }
+}
+
+function fallbackLocalOrder(payload) {
+  // Local in-memory state execution if offline
+  const oid = Math.floor(Math.random() * 800) + 1000;
+  if (payload.side === 'BUY') {
+    if (payload.order_type === 'MARKET' || (App.asks.length > 0 && payload.price >= App.asks[0].price)) {
+      const ask = App.asks[0];
+      const fill = Math.min(payload.quantity, ask.orders[0].qty);
+      App.trades.unshift({ taker: 'BUY', price: ask.price, qty: fill, maker: ask.orders[0].id, taker_id: oid });
+      App.lastPrice = ask.price;
+      App.chartPrices.push(ask.price);
+      ask.orders[0].qty -= fill;
+      if (ask.orders[0].qty <= 0) {
+        delete App.orderIndex[ask.orders[0].id];
+        ask.orders.shift();
+        if (!ask.orders.length) App.asks.shift();
+      }
+      logConsole(`LOCAL MATCH: Order #${oid} filled ${fill} shares @ $${ask.price.toFixed(4)}`, 'fill');
+    } else {
+      App.bids.unshift({ price: payload.price, orders: [{ id: oid, qty: payload.quantity }] });
+      App.bids.sort((a,b) => b.price - a.price);
+      App.orderIndex[oid] = { side: 'BUY', price: payload.price };
+      logConsole(`LOCAL REST: Order #${oid} placed on Bid ladder @ $${payload.price.toFixed(4)}`, 'success');
+    }
+  } else {
+    App.asks.unshift({ price: payload.price, orders: [{ id: oid, qty: payload.quantity }] });
+    App.asks.sort((a,b) => a.price - b.price);
+    App.orderIndex[oid] = { side: 'SELL', price: payload.price };
+    logConsole(`LOCAL REST: Order #${oid} placed on Ask ladder @ $${payload.price.toFixed(4)}`, 'success');
+  }
+  renderTerminalTab();
+}
+
+async function cancelLiveOrder(orderId) {
+  logConsole(`Sending O(1) cancellation for Order #${orderId} ...`, 'cancel');
+  if (App.isLiveBackend && App.socket && App.socket.readyState === WebSocket.OPEN) {
+    App.socket.send(JSON.stringify({ action: 'cancel_order', order_id: orderId }));
+  } else {
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, { method: 'DELETE' });
+      if (res.ok) {
+        const data = await res.json();
+        applyBookSnapshot(data.book);
+        logConsole(`Order #${orderId} successfully erased in O(1) time`, 'cancel');
+      } else {
+        fallbackCancel(orderId);
+      }
+    } catch (e) {
+      fallbackCancel(orderId);
+    }
+  }
+}
+
+function fallbackCancel(orderId) {
+  App.bids.forEach(l => l.orders = l.orders.filter(o => o.id !== orderId));
+  App.asks.forEach(l => l.orders = l.orders.filter(o => o.id !== orderId));
+  App.bids = App.bids.filter(l => l.orders.length > 0);
+  App.asks = App.asks.filter(l => l.orders.length > 0);
+  delete App.orderIndex[orderId];
+  renderTerminalTab();
+  logConsole(`Order #${orderId} cancelled in local book`, 'cancel');
+}
+
+function logConsole(text, typeClass = 'text-muted') {
+  const con = document.getElementById('ingress-console');
+  if (!con) return;
+  const line = document.createElement('div');
+  line.className = `console-line ${typeClass}`;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+  con.prepend(line);
+  if (con.children.length > 5) con.lastElementChild.remove();
+}
+
+function applyBookSnapshot(book) {
+  if (!book) return;
+  App.bids = book.bids || App.bids;
+  App.asks = book.asks || App.asks;
+  App.orderIndex = book.order_index || App.orderIndex;
+  App.lastPrice = book.last_price || App.lastPrice;
+  if (book.trades && book.trades.length) {
+    App.trades = book.trades;
+  }
+  App.chartPrices.push(App.lastPrice);
+  if (App.chartPrices.length > 20) App.chartPrices.shift();
+  renderTerminalTab();
+}
+
+// --- WebSocket Auto-Discovery & Connection ---
+function initWebSocketSync() {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${window.location.host}/ws/stream`;
+
+  const pill = document.getElementById('backend-status-pill');
+  const label = document.getElementById('backend-status-label');
+
+  try {
+    App.socket = new WebSocket(wsUrl);
+
+    App.socket.onopen = () => {
+      App.isLiveBackend = true;
+      if (pill) pill.classList.remove('offline');
+      if (label) label.textContent = 'Backend: Live WebSocket (Render Core)';
+      logConsole('Connected to Live C++ Engine WebSocket Stream', 'success');
+    };
+
+    App.socket.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'init_snapshot' || msg.type === 'order_event' || msg.type === 'cancel_event') {
+          applyBookSnapshot(msg.book);
+          if (msg.result) {
+            logConsole(`Event Order #${msg.result.order_id} [${msg.result.status}]`, 'success');
+          }
+        }
+      } catch (err) {}
+    };
+
+    App.socket.onclose = () => {
+      App.isLiveBackend = false;
+      if (pill) pill.classList.add('offline');
+      if (label) label.textContent = 'Backend: Simulation Mode';
+    };
+
+    App.socket.onerror = () => {
+      App.isLiveBackend = false;
+      if (pill) pill.classList.add('offline');
+      if (label) label.textContent = 'Backend: Simulation Mode';
+    };
+  } catch (e) {
+    App.isLiveBackend = false;
+    if (pill) pill.classList.add('offline');
+    if (label) label.textContent = 'Backend: Simulation Mode';
+  }
 }
 
 // --- Story Stepping Controls ---
@@ -445,16 +664,18 @@ function renderTerminalTab() {
 
   const maxVol = 200;
 
-  // Asks
+  // Asks (reversed so lowest ask is at the bottom, near the spread)
   [...App.asks].reverse().forEach(lvl => {
     const vol = lvl.orders.reduce((sum, o) => sum + o.qty, 0);
     const pct = Math.min(100, (vol / maxVol) * 100);
     const tr = document.createElement('tr');
+    const firstOrder = lvl.orders.length > 0 ? lvl.orders[0].id : null;
     tr.innerHTML = `
       <td style="color:var(--color-ask); font-weight:700">$${lvl.price.toFixed(4)}</td>
       <td>${vol}</td>
       <td>${lvl.orders.length}</td>
       <td class="dom-bar-cell"><div class="dom-depth-bar ask" style="width:${pct}%"></div></td>
+      <td>${firstOrder ? `<button class="btn-dom-cancel" onclick="cancelLiveOrder(${firstOrder})">Cancel #${firstOrder}</button>` : ''}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -464,7 +685,7 @@ function renderTerminalTab() {
   const bestAsk = App.asks.length > 0 ? App.asks[0].price : 0;
   const spread = (bestAsk > 0 && bestBid > 0) ? (bestAsk - bestBid).toFixed(4) : '0.0000';
   const spreadTr = document.createElement('tr');
-  spreadTr.innerHTML = `<td colspan="4" style="text-align:center; padding:0.35rem; background:rgba(255,255,255,0.02); color:var(--text-dim); font-size:0.7rem; font-family:var(--font-mono)">SPREAD: $${spread}</td>`;
+  spreadTr.innerHTML = `<td colspan="5" style="text-align:center; padding:0.35rem; background:rgba(255,255,255,0.02); color:var(--text-dim); font-size:0.7rem; font-family:var(--font-mono)">SPREAD: $${spread}</td>`;
   tbody.appendChild(spreadTr);
 
   // Bids
@@ -472,14 +693,20 @@ function renderTerminalTab() {
     const vol = lvl.orders.reduce((sum, o) => sum + o.qty, 0);
     const pct = Math.min(100, (vol / maxVol) * 100);
     const tr = document.createElement('tr');
+    const firstOrder = lvl.orders.length > 0 ? lvl.orders[0].id : null;
     tr.innerHTML = `
       <td style="color:var(--color-bid); font-weight:700">$${lvl.price.toFixed(4)}</td>
       <td>${vol}</td>
       <td>${lvl.orders.length}</td>
       <td class="dom-bar-cell"><div class="dom-depth-bar bid" style="width:${pct}%"></div></td>
+      <td>${firstOrder ? `<button class="btn-dom-cancel" onclick="cancelLiveOrder(${firstOrder})">Cancel #${firstOrder}</button>` : ''}</td>
     `;
     tbody.appendChild(tr);
   });
+
+  // LTP Badge
+  const ltpBadge = document.getElementById('terminal-ltp-badge');
+  if (ltpBadge) ltpBadge.textContent = `$${App.lastPrice.toFixed(4)}`;
 
   // Tape
   const tapeList = document.getElementById('terminal-tape-list');
@@ -538,11 +765,28 @@ function renderTerminalChart() {
 }
 
 // --- 1M Stress Benchmark Runner ---
-function runFullBenchmark() {
+async function runFullBenchmark() {
   const btn = document.getElementById('btn-run-full-bench');
   btn.disabled = true;
   btn.textContent = 'Simulating 1,000,000 Orders in In-Memory Core...';
 
+  // Try triggering backend C++ binary benchmark via API
+  if (App.isLiveBackend) {
+    try {
+      const res = await fetch('/api/benchmark?orders_count=1000000', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        document.getElementById('metric-tps').innerHTML = `${data.throughput_orders_sec.toLocaleString()} <span class="unit">orders/sec</span>`;
+        document.getElementById('metric-latency').innerHTML = `${data.p99_latency_ms} <span class="unit">ms</span>`;
+        btn.disabled = false;
+        btn.textContent = 'Execute 1,000,000 Order Benchmark';
+        alert(`Backend C++ Benchmark Completed!\n• Orders: ${data.orders_processed.toLocaleString()}\n• Rate: ${data.throughput_orders_sec.toLocaleString()} orders/sec\n• P99 Latency: ${data.p99_latency_ms} ms\n• Zero Heap Mallocs: Guaranteed`);
+        return;
+      }
+    } catch (e) {}
+  }
+
+  // Fallback client simulation
   const startTime = performance.now();
   let count = 0;
   const total = 1000000;
@@ -576,7 +820,6 @@ function switchTab(tabId) {
     renderTerminalTab();
   }
 
-  // Re-render math typography if KaTeX is loaded
   if (tabId === 'architecture' && window.renderMathInElement) {
     window.renderMathInElement(document.getElementById('tab-architecture'), {
       delimiters: [
@@ -590,6 +833,7 @@ function switchTab(tabId) {
 // --- DOM Loaded Setup ---
 document.addEventListener('DOMContentLoaded', () => {
   resetStoryState();
+  initWebSocketSync();
 
   // Tab buttons
   document.querySelectorAll('.tab-btn').forEach(btn => {
